@@ -12,6 +12,7 @@
 #include <Bme280.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include "extEEPROM.h"
 
 
 #define __DEBUG__ 0
@@ -43,9 +44,20 @@ int STATE = S_BOOT;      // CURRENT STATE - Start in S_BOOT
 
 Adafruit_MPU6050 mpu;     // IMU Sensor
 Bme280TwoWire sensor;     // Pressure & TEMP Sensor
+extEEPROM myEEPROM(kbits_1024, 1, 256, 0x50); // EEPROM Config
 
 
 sensors_event_t a, g, temp;
+
+struct RockLogCfg {
+  unsigned int starts;
+  unsigned long stored_data;
+  unsigned int maxh;
+  float maxa;
+  float maxr;
+  float mint;
+  float maxt;
+};
 
 struct dataset { // Dataset of our Datalogger
     unsigned int ts_delta; // Delta Timestamp
@@ -59,6 +71,7 @@ struct dataset { // Dataset of our Datalogger
     unsigned int t;  // t 
 };
 
+struct RockLogCfg sysdata;
 struct dataset logdata;   // One Dataset for processsing
 
 // global Variables for calculations
@@ -66,10 +79,8 @@ unsigned long  ts_last;       // Last Timestamp
 float          p_start = 0;   // Barometric Pressure (average after Boot)
 float          t_start = 0;   // Start Temperature (average after Boot)
 
-unsigned int   _addr = 0;     // Pointer to current EEPROM Location
-
-
-
+unsigned int   _addr = 256;     // Pointer to current EEPROM Location
+#define max_adress 131000
 
 // ************************************************************
 // Function data_get()
@@ -202,6 +213,29 @@ float getAltitude(float p0, float p1, float t) {
 }
 
 
+void eeprom_save() {
+  byte i2cStat;
+  byte datastream[sizeof(logdata)];
+  memcpy(datastream, &logdata, sizeof(logdata));  
+  i2cStat = myEEPROM.write(_addr, datastream, sizeof(logdata));
+  _addr = _addr+32;
+}
+
+/*
+ *    Serial.print("\n read: ");
+   
+   for (unsigned long i=0; i<500; i=i+32) {
+    address=i; Serial.print(address); Serial.print(" ");
+    // put your main code here, to run repeatedly:
+    byte datastream_r[sizeof(logdata)];
+    i2cStat = myEEPROM.read(address, datastream_r, sizeof(logdata));
+    memcpy(&logdata, datastream_r, sizeof(datastream_r));
+    Serial.print(i2cStat);
+    print_data();
+   }
+
+ */
+
 // #############################################################
 // ##############  STATE PROCESSING ############################
 // #############################################################
@@ -229,8 +263,12 @@ void boot() {
     Serial.print(" >> ALT: "); Serial.print(getAltitude(p_start, sensor.getPressure(), sensor.getTemperature())); Serial.println(" m");
       
     Serial.print("EEPROM                  >>>  ");
-      Serial.println("not implemented");
-
+     byte i2cStat = myEEPROM.begin(myEEPROM.twiClock100kHz);
+     if ( i2cStat != 0 ) {
+      Serial.println("I2C Problem");
+     } else {
+      Serial.println("OK");
+     }
     // Save t_start & p_start to EEPROM
     // Save Dataset 0 to EEPROM     
     Serial.println("\n*** Preflight bootup completed ***");
